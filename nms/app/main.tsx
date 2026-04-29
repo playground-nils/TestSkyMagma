@@ -17,6 +17,7 @@ import './util/polyfill';
 
 import ApplicationMain from './components/ApplicationMain';
 import Main from './components/Main';
+// Dummy comment to trigger eslint job
 import React from 'react';
 import ReactDOM from 'react-dom';
 import nullthrows from '../shared/util/nullthrows';
