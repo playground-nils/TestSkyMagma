@@ -1,218 +1,248 @@
-# Copyright 2022 The Magma Authors.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 name: Magma Build, Publish & Test Federated Integration
-
-on:  # yamllint disable-line rule:truthy
+'on':
   workflow_dispatch: null
   push:
     branches:
-      - master
-      - 'v1.*'
-
+    - master
+    - v1.*
 jobs:
-  # Build images on ubuntu which is faster than MacOs.
   docker-build-orc8r:
     if: github.repository_owner == 'magma' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
-      MAGMA_ROOT: "${{ github.workspace }}"
+      MAGMA_ROOT: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3.1.0
-      - name: Build Orc8r docker images
-        run: |
-          cd orc8r/cloud/docker
-          ./build.py --deployment all
-          docker images
-      - name: Export docker images to deploy them
-        run: |
-          mkdir images
-          cd images
-          docker images
-          docker save orc8r_nginx:latest | gzip > fed_orc8r_nginx.tar.gz
-          docker save orc8r_controller:latest  | gzip > fed_orc8r_controller.tar.gz
-          docker save orc8r_fluentd:latest  | gzip > fed_orc8r_fluentd.tar.gz
-          docker save orc8r_test:latest  | gzip > fed_orc8r_test.tar.gz
-      - uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # pin@v3
-        with:
-          name: docker-build-orc8r-images
-          path: images
+    - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+    - name: Build Orc8r docker images
+      run: 'cd orc8r/cloud/docker
 
+        ./build.py --deployment all
+
+        docker images
+
+        '
+    - name: Export docker images to deploy them
+      run: 'mkdir images
+
+        cd images
+
+        docker images
+
+        docker save orc8r_nginx:latest | gzip > fed_orc8r_nginx.tar.gz
+
+        docker save orc8r_controller:latest  | gzip > fed_orc8r_controller.tar.gz
+
+        docker save orc8r_fluentd:latest  | gzip > fed_orc8r_fluentd.tar.gz
+
+        docker save orc8r_test:latest  | gzip > fed_orc8r_test.tar.gz
+
+        '
+    - uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
+      with:
+        name: docker-build-orc8r-images
+        path: images
   docker-build-feg:
     if: github.repository_owner == 'magma' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
-      MAGMA_ROOT: "${{ github.workspace }}"
+      MAGMA_ROOT: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3.1.0
-      - name: pre requisites to build feg
-        run: |
-          cd ${{ env.MAGMA_ROOT }} && mkdir -p .cache/test_certs/ && mkdir -p .cache/feg/
-          cd ${{ env.MAGMA_ROOT }}/.cache/feg/ && touch snowflake
-      - name: Build FEG docker images
-        run: |
-          cd feg/gateway/docker
-          docker-compose build --force-rm --parallel
-          docker images
-      - name: Export docker images to deploy them
-        run: |
-          mkdir images
-          cd images
-          docker save feg_gateway_go:latest  | gzip > fed_feg_gateway_go.tar.gz
-          docker save feg_gateway_python:latest  | gzip > fed_feg_gateway_python.tar.gz
-      - uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # pin@v3
-        with:
-          name: docker-build-feg-images
-          path: images
+    - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+    - name: pre requisites to build feg
+      run: 'cd ${{ env.MAGMA_ROOT }} && mkdir -p .cache/test_certs/ && mkdir -p .cache/feg/
 
+        cd ${{ env.MAGMA_ROOT }}/.cache/feg/ && touch snowflake
+
+        '
+    - name: Build FEG docker images
+      run: 'cd feg/gateway/docker
+
+        docker-compose build --force-rm --parallel
+
+        docker images
+
+        '
+    - name: Export docker images to deploy them
+      run: 'mkdir images
+
+        cd images
+
+        docker save feg_gateway_go:latest  | gzip > fed_feg_gateway_go.tar.gz
+
+        docker save feg_gateway_python:latest  | gzip > fed_feg_gateway_python.tar.gz
+
+        '
+    - uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
+      with:
+        name: docker-build-feg-images
+        path: images
   federated-integ-test:
     if: github.repository_owner == 'magma' || github.event_name == 'workflow_dispatch'
-    runs-on: macos-12
-    needs: [docker-build-orc8r, docker-build-feg]
+    runs-on: macos-latest
+    needs:
+    - docker-build-orc8r
+    - docker-build-feg
     env:
-      MAGMA_ROOT: "${{ github.workspace }}"
-      AGW_ROOT: "${{ github.workspace }}/lte/gateway"
+      MAGMA_ROOT: ${{ github.workspace }}
+      AGW_ROOT: ${{ github.workspace }}/lte/gateway
     steps:
-      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # pin@v3.1.0
-      - uses: actions/setup-python@13ae5bb136fac2878aff31522b9efb785519f984 # pin@v4.3.0
-        with:
-          python-version: '3.8.5'
-      - name: Install pre requisites
-        run: |
-          pip3 install --upgrade pip
-          pip3 install ansible fabric3 jsonpickle requests PyYAML firebase_admin
-          vagrant plugin install vagrant-vbguest vagrant-disksize vagrant-scp vagrant-reload
-      - name: Vagrant Host prerequisites for federated integ test
-        run: |
-          cd ${{ env.AGW_ROOT }} && fab open_orc8r_port_in_vagrant
-          cd ${{ env.MAGMA_ROOT }} && mkdir -p .cache/test_certs/ && mkdir -p .cache/feg/
-          cd ${{ env.MAGMA_ROOT }}/.cache/feg/ && touch snowflake
-      - name: Open up network interfaces for VM
-        run: |
-          sudo mkdir -p /etc/vbox/
-          sudo touch /etc/vbox/networks.conf
-          sudo sh -c "echo '* 192.168.0.0/16' > /etc/vbox/networks.conf"
-          sudo sh -c "echo '* 3001::/64' >> /etc/vbox/networks.conf"
-      - name: Cache magma-dev-box
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # pin@v3.0.11
-        with:
-          path: ~/.vagrant.d/boxes/magmacore-VAGRANTSLASH-magma_dev
-          key: vagrant-box-magma-dev-v1.2.20221012
-      - name: Cache magma-test-box
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # pin@v3.0.11
-        with:
-          path: ~/.vagrant.d/boxes/magmacore-VAGRANTSLASH-magma_test
-          key: vagrant-box-magma-test-v1.2.20221012
-      - name: Cache magma-trfserver-box
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # pin@v3.0.11
-        with:
-          path: ~/.vagrant.d/boxes/magmacore-VAGRANTSLASH-magma_trfserver
-          key: vagrant-box-magma-trfserver-v20220722
-      - name: Log in to vagrant cloud
-        run: |
-          if [[ -n "${{ secrets.VAGRANT_TOKEN }}" ]]
-          then
-            echo "Logging in to vagrant cloud to mitigate rate limiting."
-            vagrant cloud auth login --token "${{ secrets.VAGRANT_TOKEN }}"
-          else
-            echo "Vagrant cloud token is not configured. Skipping login."
-          fi
-      - name: Build test vms
-        run: |
-          cd ${{ env.AGW_ROOT }} && fab build_test_vms
-          cd ${{ env.AGW_ROOT }} && vagrant halt magma_test && vagrant halt magma_trfserver
-      - name: build_agw
-        run: |
-          cd lte/gateway/python/integ_tests/federated_tests
-          export MAGMA_DEV_CPUS=3
-          export MAGMA_DEV_MEMORY_MB=9216
-          fab build_agw
-      # Download to local and delete artifacts from remote
-      - uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7 # pin@v3.0.1
-        with:
-          name: docker-build-orc8r-images
-          path: ${{ env.AGW_ROOT }}
-      - uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7 # pin@v3.0.1
-        with:
-          name: docker-build-feg-images
-          path: ${{ env.AGW_ROOT }}
-      - uses: geekyeggo/delete-artifact@54ab544f12cdb7b71613a16a2b5a37a9ade990af # pin@v2.0.0
-        with:
-          name: |
-            docker-build-orc8r-images |
-            docker-build-feg-images
-      - name: Load Docker images from tar files
-        run: |
-          set -x
-          cd ${{ env.AGW_ROOT }}
-          for IMAGE in `ls -a1 *.gz`
-          do
-            echo Image being loaded $IMAGE
-            gzip -cd $IMAGE > image.tar
-            vagrant ssh magma -c 'cat magma/lte/gateway/image.tar | docker load'
-            rm image.tar
-          done
-      - name: Run the federated integ test
-        run: |
-          cd lte/gateway
-          export MAGMA_DEV_CPUS=3
-          export MAGMA_DEV_MEMORY_MB=9216
-          fab federated_integ_test:build_all=False,orc8r_on_vagrant=True
-      - name: Get test results
-        if: always()
-        run: |
-          cd lte/gateway
-          fab get_test_summaries:dst_path="test-results"
-          ls -R
-      - name: Upload test results
-        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # pin@v3
-        if: always()
-        with:
-          name: test-results
-          path: lte/gateway/test-results/**/*.xml
-      - name: Get test logs
-        if: always()
-        run: |
-          cd lte/gateway
-          fab get_test_logs:dst_path=./logs.tar.gz
-      - name: Upload test logs
-        uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8 # pin@v3
-        if: always()
-        with:
-          name: test-logs
-          path: lte/gateway/logs.tar.gz
-      - name: Publish Unit Test Results
-        if: always()
-        uses: EnricoMi/publish-unit-test-result-action/composite@46ab8d49369d898e381a607119161771bc65c2a6 # pin@v2.2.0
-        with:
-          check_name: FEG integration test results
-          junit_files: lte/gateway/test-results/**/*.xml
-          check_run_annotations: all tests
-      - name: Publish results to Firebase
-        if: always() && github.event_name == 'push'
-        env:
-          FIREBASE_SERVICE_CONFIG: ${{ secrets.FIREBASE_SERVICE_CONFIG }}
-          REPORT_FILENAME: "feg_integ_test_${{ github.sha }}.html"
-        run: |
-          npm install -g xunit-viewer
-          [ -d "lte/gateway/test-results/" ] && { xunit-viewer -r lte/gateway/test-results/ -o "$REPORT_FILENAME"; }
-          [ -f "$REPORT_FILENAME" ] && { python ci-scripts/firebase_upload_file.py -f "$REPORT_FILENAME" -o out_url.txt; }
-          [ -f "out_url.txt" ] && { URL=$(cat out_url.txt); }
-          python ci-scripts/firebase_publish_report.py -id ${{ github.sha }} --verdict ${{ job.status }} --run_id ${{ github.run_id }} feg --url $URL
-      - name: Notify failure to slack
-        if: failure() && github.event_name == 'push'
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_USERNAME: ${{ github.workflow }}
-          SLACK_AVATAR: ":boom:"
-        uses: Ilshidur/action-slack@2.1.0
-        with:
-          args: "Federated integration test test failed on [${{ github.sha }}](${{github.event.repository.owner.html_url}}/magma/commit/${{ github.sha }}): ${{ steps.commit.outputs.title}}"
+    - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+    - uses: actions/setup-python@13ae5bb136fac2878aff31522b9efb785519f984
+      with:
+        python-version: 3.8.5
+    - name: Install pre requisites
+      run: 'pip3 install --upgrade pip
+
+        pip3 install ansible fabric3 jsonpickle requests PyYAML firebase_admin
+
+        vagrant plugin install vagrant-vbguest vagrant-disksize vagrant-scp vagrant-reload
+
+        '
+    - name: Vagrant Host prerequisites for federated integ test
+      run: 'cd ${{ env.AGW_ROOT }} && fab open_orc8r_port_in_vagrant
+
+        cd ${{ env.MAGMA_ROOT }} && mkdir -p .cache/test_certs/ && mkdir -p .cache/feg/
+
+        cd ${{ env.MAGMA_ROOT }}/.cache/feg/ && touch snowflake
+
+        '
+    - name: Open up network interfaces for VM
+      run: 'sudo mkdir -p /etc/vbox/
+
+        sudo touch /etc/vbox/networks.conf
+
+        sudo sh -c "echo ''* 192.168.0.0/16'' > /etc/vbox/networks.conf"
+
+        sudo sh -c "echo ''* 3001::/64'' >> /etc/vbox/networks.conf"
+
+        '
+    - name: Cache magma-dev-box
+      uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
+      with:
+        path: ~/.vagrant.d/boxes/magmacore-VAGRANTSLASH-magma_dev
+        key: vagrant-box-magma-dev-v1.2.20221012
+    - name: Cache magma-test-box
+      uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
+      with:
+        path: ~/.vagrant.d/boxes/magmacore-VAGRANTSLASH-magma_test
+        key: vagrant-box-magma-test-v1.2.20221012
+    - name: Cache magma-trfserver-box
+      uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
+      with:
+        path: ~/.vagrant.d/boxes/magmacore-VAGRANTSLASH-magma_trfserver
+        key: vagrant-box-magma-trfserver-v20220722
+    - name: Log in to vagrant cloud
+      run: "if [[ -n \"${{ secrets.VAGRANT_TOKEN }}\" ]]\nthen\n  echo \"Logging in\
+        \ to vagrant cloud to mitigate rate limiting.\"\n  vagrant cloud auth login\
+        \ --token \"${{ secrets.VAGRANT_TOKEN }}\"\nelse\n  echo \"Vagrant cloud token\
+        \ is not configured. Skipping login.\"\nfi\n"
+    - name: Build test vms
+      run: 'cd ${{ env.AGW_ROOT }} && fab build_test_vms
+
+        cd ${{ env.AGW_ROOT }} && vagrant halt magma_test && vagrant halt magma_trfserver
+
+        '
+    - name: build_agw
+      run: 'cd lte/gateway/python/integ_tests/federated_tests
+
+        export MAGMA_DEV_CPUS=3
+
+        export MAGMA_DEV_MEMORY_MB=9216
+
+        fab build_agw
+
+        '
+    - uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
+      with:
+        name: docker-build-orc8r-images
+        path: ${{ env.AGW_ROOT }}
+    - uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
+      with:
+        name: docker-build-feg-images
+        path: ${{ env.AGW_ROOT }}
+    - uses: geekyeggo/delete-artifact@54ab544f12cdb7b71613a16a2b5a37a9ade990af
+      with:
+        name: 'docker-build-orc8r-images |
+
+          docker-build-feg-images
+
+          '
+    - name: Load Docker images from tar files
+      run: "set -x\ncd ${{ env.AGW_ROOT }}\nfor IMAGE in `ls -a1 *.gz`\ndo\n  echo\
+        \ Image being loaded $IMAGE\n  gzip -cd $IMAGE > image.tar\n  vagrant ssh\
+        \ magma -c 'cat magma/lte/gateway/image.tar | docker load'\n  rm image.tar\n\
+        done\n"
+    - name: Run the federated integ test
+      run: 'cd lte/gateway
+
+        export MAGMA_DEV_CPUS=3
+
+        export MAGMA_DEV_MEMORY_MB=9216
+
+        fab federated_integ_test:build_all=False,orc8r_on_vagrant=True
+
+        '
+    - name: Get test results
+      if: always()
+      run: 'cd lte/gateway
+
+        fab get_test_summaries:dst_path="test-results"
+
+        ls -R
+
+        '
+    - name: Upload test results
+      uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
+      if: always()
+      with:
+        name: test-results
+        path: lte/gateway/test-results/**/*.xml
+    - name: Get test logs
+      if: always()
+      run: 'cd lte/gateway
+
+        fab get_test_logs:dst_path=./logs.tar.gz
+
+        '
+    - name: Upload test logs
+      uses: actions/upload-artifact@3cea5372237819ed00197afe530f5a7ea3e805c8
+      if: always()
+      with:
+        name: test-logs
+        path: lte/gateway/logs.tar.gz
+    - name: Publish Unit Test Results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action/composite@46ab8d49369d898e381a607119161771bc65c2a6
+      with:
+        check_name: FEG integration test results
+        junit_files: lte/gateway/test-results/**/*.xml
+        check_run_annotations: all tests
+    - name: Publish results to Firebase
+      if: always() && github.event_name == 'push'
+      env:
+        FIREBASE_SERVICE_CONFIG: ${{ secrets.FIREBASE_SERVICE_CONFIG }}
+        REPORT_FILENAME: feg_integ_test_${{ github.sha }}.html
+      run: 'npm install -g xunit-viewer
+
+        [ -d "lte/gateway/test-results/" ] && { xunit-viewer -r lte/gateway/test-results/
+        -o "$REPORT_FILENAME"; }
+
+        [ -f "$REPORT_FILENAME" ] && { python ci-scripts/firebase_upload_file.py -f
+        "$REPORT_FILENAME" -o out_url.txt; }
+
+        [ -f "out_url.txt" ] && { URL=$(cat out_url.txt); }
+
+        python ci-scripts/firebase_publish_report.py -id ${{ github.sha }} --verdict
+        ${{ job.status }} --run_id ${{ github.run_id }} feg --url $URL
+
+        '
+    - name: Notify failure to slack
+      if: failure() && github.event_name == 'push'
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        SLACK_USERNAME: ${{ github.workflow }}
+        SLACK_AVATAR: ':boom:'
+      uses: Ilshidur/action-slack@2.1.0
+      with:
+        args: 'Federated integration test test failed on [${{ github.sha }}](${{github.event.repository.owner.html_url}}/magma/commit/${{
+          github.sha }}): ${{ steps.commit.outputs.title}}'
